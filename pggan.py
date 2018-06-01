@@ -29,7 +29,6 @@ class PGGAN:
         
         if torch.cuda.is_available():
             self.use_cuda = True
-            torch.set_default_tensor_type('torch.cuda.FloatTensor')
         else:
             self.use_cuda = False
             torch.set_default_tensor_type('torch.FloatTensor')
@@ -137,8 +136,8 @@ class PGGAN:
                     self.fadein['gen'].update_alpha(d_alpha)
                     self.complete['gen'] = self.fadein['gen'].alpha * 100
                 self.flag_flush_gen = False
-                self.G.flush_network()  # flush Generator
-                print('Generator flushed:\n{}'.format(self.G.model))
+                self.G.module.flush_network()  # flush Generator
+                print('Generator flushed:\n{}'.format(self.G.module.model))
                 self.fadein['gen'] = None
                 self.complete['gen'] = 0.0
                 self.phase = 'dtrns'
@@ -147,8 +146,8 @@ class PGGAN:
                     self.fadein['dis'].update_alpha(d_alpha)
                     self.complete['dis'] = self.fadein['dis'].alpha * 100
                 self.flag_flush_dis = False
-                self.D.flush_network()  # flush Discriminator
-                print('Discriminator flushed:\n{}'.format(self.D.model))
+                self.D.module.flush_network()  # flush Discriminator
+                print('Discriminator flushed:\n{}'.format(self.D.module.model))
                 self.fadein['dis'] = None
                 self.complete['dis'] = 0.0
                 if floor(self.resl) < self.max_resl and self.phase != 'final':
@@ -159,11 +158,11 @@ class PGGAN:
             #
             if floor(self.resl) != prev_resl and floor(self.resl) < self.max_resl + 1:
                 self.lr = self.lr * float(self.config.lr_decay)
-                self.G.grow_network(floor(self.resl))
-                self.D.grow_network(floor(self.resl))
+                self.G.module.grow_network(floor(self.resl))
+                self.D.module.grow_network(floor(self.resl))
                 self.renew_everything()
-                self.fadein['gen'] = self.G.model.fadein_block
-                self.fadein['dis'] = self.D.model.fadein_block
+                self.fadein['gen'] = self.G.module.model.fadein_block
+                self.fadein['dis'] = self.D.module.model.fadein_block
                 self.flag_flush_gen = True
                 self.flag_flush_dis = True
 
@@ -214,16 +213,16 @@ class PGGAN:
     def feed_interpolated_input(self, x):
         if self.phase == 'gtrns' and floor(self.resl) > 2 and floor(self.resl) <= self.max_resl:
             alpha = self.complete['gen'] / 100.0
-            transform = transforms.Compose( [
-                                                transforms.ToPILImage(),
-                                                transforms.Resize(size=int(pow(2, floor(self.resl) - 1)), interpolation=0),
-                                                transforms.Resize(size=int(pow(2, floor(self.resl))), interpolation=0),
-                                                transforms.ToTensor(),
-                                            ] )
+            transform = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Resize(size=int(pow(2, floor(self.resl) - 1)), interpolation=0),
+                transforms.Resize(size=int(pow(2, floor(self.resl))), interpolation=0),
+                transforms.ToTensor(),
+            ])
             x_low = x.clone().add(1).mul(0.5)
             for i in range(x_low.size(0)):
                 x_low[i] = transform(x_low[i]).mul(2).add(-1)
-            x = torch.add(x.mul(alpha), x_low.mul(1 - alpha))   # interpolated_x
+            x = torch.add(x.mul(alpha), x_low.mul(1 - alpha))  # interpolated_x
         if self.use_cuda:
             return x.cuda()
         else:
@@ -239,7 +238,9 @@ class PGGAN:
             self._d_ = 0.0
         strength = 0.2 * max(0, self._d_ - 0.5) ** 2
         z = np.random.randn(*x.size()).astype(np.float32) * strength
-        z = Variable(torch.from_numpy(z)).cuda() if self.use_cuda else Variable(torch.from_numpy(z))
+        fn = torch.from_numpy(z)
+        fnv = Variable(fn)
+        z = fnv.cuda() if self.use_cuda else fnv
         return x + z
 
     def train(self):
@@ -274,7 +275,9 @@ class PGGAN:
 
                 self.fx = self.D(self.x)
                 self.fx_tilde = self.D(self.x_tilde.detach())
-                loss_d = self.criterion(self.fx, self.real_label) + self.criterion(self.fx_tilde, self.fake_label)
+                real_loss = self.criterion(torch.squeeze(self.fx), self.real_label)
+                fake_loss = self.criterion(torch.squeeze(self.fx_tilde), self.fake_label)
+                loss_d = real_loss + fake_loss
 
                 # Compute gradients and apply update to parameters
                 loss_d.backward()
@@ -282,15 +285,26 @@ class PGGAN:
 
                 # Update generator
                 fx_tilde = self.D(self.x_tilde)
-                loss_g = self.criterion(fx_tilde, self.real_label.detach())
+                loss_g = self.criterion(torch.squeeze(fx_tilde), self.real_label.detach())
                 
                 # Compute gradients and apply update to parameters
                 loss_g.backward()
                 self.opt_g.step()
 
                 # Log information
-                log_msg = ' [E:{0}][T:{1}][{2:6}/{3:6}]  errD: {4:.4f} | errG: {5:.4f} | [lr:{11:.5f}][cur:{6:.3f}][resl:{7:4}][{8}][{9:.1f}%][{10:.1f}%]'.format(
-                    self.epoch, self.global_tick, self.stack, len(self.loader.dataset), loss_d.data[0], loss_g.data[0], self.resl, int(pow(2,floor(self.resl))), self.phase, self.complete['gen'], self.complete['dis'], self.lr)
+                log_msg = ' [epoch:{0}][T:{1}][{2:6}/{3:6}]  errD: {4:.4f} | errG: {5:.4f} | [lr:{11:.5f}][cur:{6:.3f}][resl:{7:4}][{8}][{9:.1f}%][{10:.1f}%]'.format(
+                    self.epoch,
+                    self.global_tick,
+                    self.stack,
+                    len(self.loader.dataset),
+                    loss_d.data[0],
+                    loss_g.data[0],
+                    self.resl,
+                    int(pow(2, floor(self.resl))),
+                    self.phase,
+                    self.complete['gen'],
+                    self.complete['dis'],
+                    self.lr)
                 tqdm.write(log_msg)
 
                 # Save the model

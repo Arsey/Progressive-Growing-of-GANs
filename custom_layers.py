@@ -119,7 +119,7 @@ class EqualizedConv2d(nn.Module):
         self.conv.weight.data.copy_(self.conv.weight.data / self.scale)     # for equalized learning rate
 
     def forward(self, x):
-        x = self.conv(x.mul(self.scale))
+        x = self.conv(x.mul(self.scale.type(torch.cuda.FloatTensor)))
         return x + self.bias.view(1, -1, 1, 1).expand_as(x)
 
 class EqualizedDeconv2d(nn.Module):
@@ -153,7 +153,7 @@ class EqualizedLinear(nn.Module):
         self.linear.weight.data.copy_(self.linear.weight.data / self.scale)
 
     def forward(self, x):
-        x = self.linear(x.mul(self.scale))
+        x = self.linear(x.mul(self.scale.type(torch.cuda.FloatTensor)))
         return x + self.bias.view(1, -1).expand_as(x)
 
 class GeneralizedDropout(nn.Module):

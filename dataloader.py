@@ -20,20 +20,31 @@ class dataloader:
 
     def __init__(self, config):
         self.root = config.train_data_root
-        self.batch_table = {4:32, 8:32, 16:32, 32:16, 64:16, 128:16, 256:14, 512:6, 1024:3} # change this according to available gpu memory.
-        self.batchsize = int(self.batch_table[pow(2, 2)])        # we start from 2^2=4
+        self.batch_table = {
+            4: 512,
+            8: 256,
+            16: 32,
+            32: 16,
+            64: 8,
+            128: 4,
+            256: 1,
+            512: 2,
+            1024: 2
+        }  # change this according to available gpu memory.
+        self.batchsize = int(self.batch_table[pow(2, 2)])  # we start from 2^2=4
         self.imsize = int(pow(2, 2))
-        self.num_workers = 4
+        self.num_workers = 1
         
     def renew(self, resl):
-        print('[*] Renew dataloader configuration, load data from {}.'.format(self.root))
+        self.imsize = int(pow(2, resl))
+        root = os.path.join(self.root, str(self.imsize))
+        print('[*] Renew dataloader configuration, load data from {}.'.format(root))
         
         self.batchsize = int(self.batch_table[pow(2, resl)])
-        self.imsize = int(pow(2, resl))
         self.dataset = ImageFolder(
-                    root=self.root,
+                    root=root,
                     transform=transforms.Compose([
-                                                transforms.Resize(size=(self.imsize,self.imsize), interpolation=Image.NEAREST),
+                                                # transforms.Resize(size=(self.imsize,self.imsize), interpolation=Image.NEAREST),
                                                 transforms.ToTensor(),
                                                 ]))       
 

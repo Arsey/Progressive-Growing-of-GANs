@@ -9,9 +9,9 @@ __author__ = 'Rahul Bhalley'
 parser = argparse.ArgumentParser('PGGAN')
 
 ## General settings
-parser.add_argument('--train_data_root', type=str, default='./data')
+parser.add_argument('--train_data_root', type=str, default='/media/arsey/nvme/celebA-HQ')
 parser.add_argument('--random_seed', type=int, default=int(time.time()))
-parser.add_argument('--n_gpu', type=int, default=8)             # for Multi-GPU training
+parser.add_argument('--n_gpu', type=int, default=1)             # for Multi-GPU training
 
 ## Training parameters
 parser.add_argument('--lr', type=float, default=0.001)          # learning rate
